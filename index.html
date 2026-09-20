@@ -131,6 +131,15 @@
   .btn-row { display: flex; gap: 8px; }
   .btn-row > button { flex: 1; }
 
+  /* 文字输入控件 */
+  .text-input { width: 100%; padding: 8px 10px; background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 5px; color: #e8ecff; font-size: 13px; outline: none; font-family: inherit; }
+  .text-input:focus { border-color: #6366f1; }
+  textarea.text-input { resize: vertical; min-height: 50px; }
+  .font-file-btn { display: inline-block; padding: 6px 10px; background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 5px; color: #aaa; font-size: 11px; cursor: pointer; margin-top: 4px; }
+  .font-file-btn:hover { border-color: #6366f1; color: #ccc; }
+  .checkbox-row { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: #aaa; }
+  .checkbox-row input[type="checkbox"] { accent-color: #6366f1; width: 14px; height: 14px; }
+
   /* 底部引流链接（复制自 glow-grid） */
   .bottom-links {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
@@ -226,6 +235,25 @@
       </div>
     </div>
 
+    <div class="param-group">
+      <div class="param-label" style="display:flex;justify-content:space-between;align-items:center">
+        <span>文字</span>
+        <label class="checkbox-row"><input type="checkbox" id="writeText" checked> 写文字</label>
+      </div>
+      <textarea class="text-input" id="textInput" rows="2">HEIP</textarea>
+      <div class="param-label"><span>字体名</span></div>
+      <input type="text" class="text-input" id="fontInput" value="sans-serif" placeholder="如 楷体 / 仿宋 / Arial">
+      <label class="font-file-btn" for="fontFile">＋ 加载本地字体 .ttf/.otf</label>
+      <input type="file" id="fontFile" accept=".ttf,.otf" style="display:none">
+      <div class="param-item">
+        <div class="param-label"><span>字号</span><span class="param-value" id="val-textSize">120</span></div>
+        <input type="range" id="textSize" min="20" max="400" value="120" step="1">
+      </div>
+      <div class="color-row">
+        <div class="color-pick"><label>字色</label><input type="color" id="textColor" value="#ffffff"></div>
+      </div>
+    </div>
+
     <div class="divider"></div>
 
     <div class="btn-row">
@@ -279,6 +307,11 @@ const cfg = {
   lineW: 1.4,
   gravity: 0.45,
   boom: 1,
+  writeText: true,
+  text: 'HEIP',
+  fontName: 'sans-serif',
+  textSize: 120,
+  textColor: '#ffffff',
 };
 
 function setup() {
@@ -323,6 +356,17 @@ function draw() {
   for (const pt of particles) { pt.update(); pt.show(); }
   blendMode(BLEND);
   t += 0.008 * cfg.flowSpeed;
+
+  // 画文字（居中，用 Canvas 2D 原生避开 HSB 颜色模式）
+  if (cfg.writeText && cfg.text) {
+    drawingContext.save();
+    drawingContext.fillStyle = cfg.textColor;
+    drawingContext.font = `bold ${cfg.textSize}px ${cfg.fontName}, sans-serif`;
+    drawingContext.textAlign = 'center';
+    drawingContext.textBaseline = 'middle';
+    drawingContext.fillText(cfg.text, width / 2, height / 2);
+    drawingContext.restore();
+  }
 }
 
 class Particle {
@@ -454,6 +498,31 @@ document.querySelectorAll('.direction-btn').forEach(btn => {
     background(p.bg[0], p.bg[1], p.bg[2]);
     for (const pt of particles) pt.pickHue();
   });
+});
+
+// ── 文字控件 ──
+document.getElementById('writeText').addEventListener('change', (e) => { cfg.writeText = e.target.checked; });
+document.getElementById('textInput').addEventListener('input', (e) => { cfg.text = e.target.value; });
+document.getElementById('fontInput').addEventListener('input', (e) => { cfg.fontName = e.target.value; });
+document.getElementById('textSize').addEventListener('input', (e) => {
+  cfg.textSize = parseInt(e.target.value);
+  document.getElementById('val-textSize').textContent = cfg.textSize;
+});
+document.getElementById('textColor').addEventListener('input', (e) => { cfg.textColor = e.target.value; });
+document.getElementById('fontFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const ff = new FontFace('customFont', ev.target.result);
+    ff.load().then(() => {
+      document.fonts.add(ff);
+      cfg.fontName = 'customFont';
+      document.getElementById('fontInput').value = 'customFont';
+    }).catch(err => console.error('字体加载失败', err));
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
 });
 
 // 面板收起/展开
