@@ -272,6 +272,7 @@
 
     <div class="btn-row">
       <button class="ghost-btn" id="clearBtn">清屏</button>
+      <button class="ghost-btn" id="resetBtn">重置</button>
       <button class="save-btn" id="saveBtn">保存图片</button>
     </div>
   </div>
@@ -328,98 +329,83 @@ const cfg = {
   textColor: '#ffffff',
 };
 
-
-// ============ 数据持久化 ============
-var LS_PREFIX = 'flow_';
-var LS_IMAGE_MAX = 4 * 1024 * 1024;
-
+// ── localStorage 持久化 ──
+const LS_PREFIX = 'flow_';
 function persistCfg(key, value) {
-  try { localStorage.setItem(LS_PREFIX + key, String(value)); }
-  catch (e) { console.warn('[persist] localStorage 写入失败（' + key + '）:', e.message); }
+  try { localStorage.setItem(LS_PREFIX + key, String(value)); } catch(e) {}
 }
-
-function persistFont(dataUrl, fontName) {
-  if (!dataUrl) return;
-  if (dataUrl.length > LS_IMAGE_MAX) {
-    console.warn('[persist] 字体过大，未存 localStorage');
-    return;
-  }
-  try {
-    localStorage.setItem(LS_PREFIX + 'font', dataUrl);
-    localStorage.setItem(LS_PREFIX + 'fontName', fontName);
-  } catch (e) { console.warn('[persist] 字体存 localStorage 失败:', e.message); }
+function syncUIFromCfg() {
+  const mainSliders = ['particleCount', 'flowSpeed', 'trailLen', 'lineW', 'gravity', 'boom'];
+  mainSliders.forEach(id => {
+    const slider = document.getElementById(id);
+    const valEl = document.getElementById('val-' + id);
+    if (slider) slider.value = cfg[id];
+    if (valEl) valEl.textContent = fmtVal(id, cfg[id]);
+  });
+  const tsSlider = document.getElementById('textSize');
+  const tsVal = document.getElementById('val-textSize');
+  if (tsSlider) tsSlider.value = cfg.textSize;
+  if (tsVal) tsVal.textContent = cfg.textSize;
+  const wtEl = document.getElementById('writeText');
+  if (wtEl) wtEl.checked = cfg.writeText;
+  const tiEl = document.getElementById('textInput');
+  if (tiEl) tiEl.value = cfg.text;
+  const fiEl = document.getElementById('fontInput');
+  if (fiEl) fiEl.value = cfg.fontName;
+  const tcEl = document.getElementById('textColor');
+  if (tcEl) tcEl.value = cfg.textColor;
+  document.querySelectorAll('.direction-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.pal) === paletteIndex);
+  });
 }
-function clearPersistedFont() {
-  localStorage.removeItem(LS_PREFIX + 'font');
-  localStorage.removeItem(LS_PREFIX + 'fontName');
-}
-
 function restoreCfg() {
-  var keys = ['particleCount', 'flowSpeed', 'trailLen', 'lineW', 'gravity', 'boom', 'writeText', 'text', 'fontName', 'textSize', 'textColor'];
-  var count = 0;
-  for (var i = 0; i < keys.length; i++) {
-    var k = keys[i];
-    var v = localStorage.getItem(LS_PREFIX + k);
+  const keys = ['particleCount','flowSpeed','trailLen','lineW','gravity','boom',
+    'writeText','text','fontName','textSize','textColor','paletteIndex'];
+  for (const k of keys) {
+    const v = localStorage.getItem(LS_PREFIX + k);
     if (v === null) continue;
+    if (k === 'paletteIndex') { paletteIndex = parseInt(v); continue; }
     if (typeof cfg[k] === 'boolean') cfg[k] = (v === 'true');
     else if (typeof cfg[k] === 'number') cfg[k] = parseFloat(v);
-    else if (typeof cfg[k] === 'string') cfg[k] = v;
-    count++;
+    else cfg[k] = v;
   }
-  if (count === 0) return false;
   syncUIFromCfg();
-  console.log('[persist] 还原', count, '个参数');
-  return true;
 }
-
-function syncUIFromCfg() {
-  var $ = function(id) { return document.getElementById(id); };
-  // Sync all range inputs that match cfg keys
-  for (var k in cfg) {
-    var el = $(k);
-    if (el && el.type === 'range') {
-      el.value = cfg[k];
-      // trigger label update
-      if (el.oninput) el.oninput({target: el});
-      else el.dispatchEvent(new Event('input', {bubbles: true}));
-    }
-  }
-  // Sync color inputs
-  for (var k2 in cfg) {
-    var el2 = $(k2);
-    if (el2 && el2.type === 'color') {
-      el2.value = cfg[k2];
-      el2.dispatchEvent(new Event('input', {bubbles: true}));
-    }
-  }
-  // Sync text inputs
-  var ti = $('textInput');
-  if (ti && cfg.text !== undefined) { ti.value = cfg.text; ti.dispatchEvent(new Event('input', {bubbles: true})); }
-  var fn = $('fontName') || $('fontInput');
-  if (fn && cfg.fontName !== undefined) { 
-    if (fn.tagName === 'INPUT') { fn.value = cfg.fontName; }
-  }
-
-}
-
 function restoreFont() {
-  var src = localStorage.getItem(LS_PREFIX + 'font');
-  if (!src) return false;
-  var fname = localStorage.getItem(LS_PREFIX + 'fontName') || 'custom';
-  var face = new FontFace(fname, 'url(' + src + ')');
-  face.load().then(function(f) {
-    document.fonts.add(f);
-    if (typeof cfg !== 'undefined' && cfg.fontName !== undefined) cfg.fontName = fname;
-    var fn = document.getElementById('fontName') || document.getElementById('fontFileName');
-    if (fn) { if (fn.tagName === 'INPUT') fn.value = fname; }
-    console.log('[persist] 还原字体:', fname);
-  }).catch(function(e) {
-    console.warn('[persist] 还原字体失败:', e.message);
-  });
-  return true;
+  const fontData = localStorage.getItem(LS_PREFIX + 'customFont');
+  if (!fontData) return;
+  try {
+    const ff = new FontFace('customFont', fontData);
+    ff.load().then(() => {
+      document.fonts.add(ff);
+      cfg.fontName = 'customFont';
+      const fi = document.getElementById('fontInput');
+      if (fi) fi.value = 'customFont';
+    }).catch(err => console.error('字体恢复失败', err));
+  } catch(e) { console.error('字体恢复失败', e); }
+}
+function resetCfg() {
+  const defaults = {
+    particleCount: 420, flowSpeed: 1, trailLen: 6, lineW: 1.4,
+    gravity: 0.45, boom: 1, writeText: true, text: 'HEIP',
+    fontName: 'sans-serif', textSize: 300, textColor: '#ffffff'
+  };
+  Object.assign(cfg, defaults);
+  paletteIndex = 0;
+  ['particleCount','flowSpeed','trailLen','lineW','gravity','boom',
+   'writeText','text','fontName','textSize','textColor','paletteIndex',
+   'customFont','customFontName'
+  ].forEach(k => { try { localStorage.removeItem(LS_PREFIX + k); } catch(e){} });
+  syncUIFromCfg();
+  rebuildParticles();
+  const p = palettes[paletteIndex];
+  background(p.bg[0], p.bg[1], p.bg[2]);
+  for (const pt of particles) pt.pickHue();
 }
 
 function setup() {
+  restoreCfg();
+  restoreFont();
   const cnv = createCanvas(windowWidth, windowHeight);
   cnv.parent('canvas-container');
   // 只在画布上点击才引爆，点 UI 不会触发
@@ -588,6 +574,7 @@ sliderIds.forEach(id => {
   slider.addEventListener('input', () => {
     const v = parseFloat(slider.value);
     cfg[id] = v;
+    persistCfg(id, v);
     valEl.textContent = fmtVal(id, v);
     if (id === 'particleCount') rebuildParticles();
   });
@@ -599,6 +586,7 @@ document.querySelectorAll('.direction-btn').forEach(btn => {
     document.querySelectorAll('.direction-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     paletteIndex = parseInt(btn.dataset.pal);
+    persistCfg('paletteIndex', paletteIndex);
     const p = palettes[paletteIndex];
     background(p.bg[0], p.bg[1], p.bg[2]);
     for (const pt of particles) pt.pickHue();
@@ -606,27 +594,34 @@ document.querySelectorAll('.direction-btn').forEach(btn => {
 });
 
 // ── 文字控件 ──
-document.getElementById('writeText').addEventListener('change', (e) => { cfg.writeText = e.target.checked; });
-document.getElementById('textInput').addEventListener('input', (e) => { try { persistCfg('text', cfg.text); } catch(e) {} cfg.text = e.target.value; });
-document.getElementById('fontInput').addEventListener('input', (e) => { cfg.fontName = e.target.value; });
+document.getElementById('writeText').addEventListener('change', (e) => { cfg.writeText = e.target.checked; persistCfg('writeText', cfg.writeText); });
+document.getElementById('textInput').addEventListener('input', (e) => { cfg.text = e.target.value; persistCfg('text', cfg.text); });
+document.getElementById('fontInput').addEventListener('input', (e) => { cfg.fontName = e.target.value; persistCfg('fontName', cfg.fontName); });
 document.getElementById('textSize').addEventListener('input', (e) => {
   cfg.textSize = parseInt(e.target.value);
+  persistCfg('textSize', cfg.textSize);
   document.getElementById('val-textSize').textContent = cfg.textSize;
 });
-document.getElementById('textColor').addEventListener('input', (e) => { cfg.textColor = e.target.value; });
+document.getElementById('textColor').addEventListener('input', (e) => { cfg.textColor = e.target.value; persistCfg('textColor', cfg.textColor); });
 document.getElementById('fontFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (ev) => {
-    const ff = new FontFace('customFont', ev.target.result);
+    const fontDataUrl = ev.target.result;
+    const ff = new FontFace('customFont', fontDataUrl);
     ff.load().then(() => {
       document.fonts.add(ff);
       cfg.fontName = 'customFont';
       document.getElementById('fontInput').value = 'customFont';
+      persistCfg('fontName', 'customFont');
+      try {
+        localStorage.setItem(LS_PREFIX + 'customFont', fontDataUrl);
+        localStorage.setItem(LS_PREFIX + 'customFontName', file.name);
+      } catch(e) { console.warn('字体过大，无法持久化', e); }
     }).catch(err => console.error('字体加载失败', err));
   };
-  reader.readAsArrayBuffer(file);
+  reader.readAsDataURL(file);
   e.target.value = '';
 });
 
@@ -650,6 +645,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
 document.getElementById('saveBtn').addEventListener('click', () => {
   saveCanvas('aurora-flow', 'png');
 });
+document.getElementById('resetBtn').addEventListener('click', resetCfg);
 
 // ── 底部引流栏逻辑（复制自 glow-grid） ──
 const bottomLinks = document.getElementById('bottomLinks');
